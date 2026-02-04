@@ -9,7 +9,6 @@ app = FastAPI(
     description="MCP tool server for Event Platform - ChatGPT Compatible",
 )
 
-# CORS middleware for ChatGPT compatibility
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

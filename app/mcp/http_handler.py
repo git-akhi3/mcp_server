@@ -5,70 +5,13 @@ import json
 import uuid
 import asyncio
 
-from app.tools.event_tools import (
-    tool_get_all_events,
-    tool_get_event_by_slug,
-)
+from app.mcp.registry import get_tools_list, call_tool as registry_call_tool
 
 mcp_router = APIRouter()
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "bigbull-events"
 SERVER_VERSION = "1.0.0"
-
-GET_ALL_EVENTS_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "page": {
-            "type": "integer",
-            "description": "Page number for pagination (0-indexed). Default is 0."
-        },
-        "size": {
-            "type": "integer",
-            "description": "Number of events per page. Default is 4."
-        },
-        "sortBy": {
-            "type": "string",
-            "description": "Field to sort by. Default is 'eventDateTime'."
-        },
-        "sortDir": {
-            "type": "string",
-            "description": "Sort direction: 'asc' for ascending, 'desc' for descending.",
-            "enum": ["asc", "desc"]
-        },
-        "afterDate": {
-            "type": "string",
-            "description": "ISO 8601 datetime string with timezone. Format: YYYY-MM-DDTHH:MM:SS.000Z (e.g., 2026-02-04T00:00:00.000Z). Filters events occurring after this date."
-        }
-    },
-    "required": ["afterDate"],
-    "additionalProperties": False
-}
-
-GET_EVENT_BY_SLUG_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "event_slug": {
-            "type": "string",
-            "description": "The unique slug identifier for the event (e.g., 'new-year-party-2026')"
-        }
-    },
-    "required": ["event_slug"],
-    "additionalProperties": False
-}
-
-TOOLS_DEFINITION = [
-    {
-        "name": "get_all_events",
-        "description": "Retrieve a paginated list of upcoming events at Big Bull club. Use afterDate parameter to filter events occurring after a specific date. The afterDate MUST be in ISO 8601 format with timezone (e.g., 2026-02-04T00:00:00.000Z).",
-        "input_schema": GET_ALL_EVENTS_SCHEMA 
-    },
-    {
-        "name": "get_event_by_slug",
-        "description": "Retrieve complete details of a specific event using its unique slug identifier. Returns event information including booking types and table availability.",
-        "input_schema": GET_EVENT_BY_SLUG_SCHEMA 
-    }
-]
 
 
 def create_mcp_response(result: Any, request_id: Optional[str] = None) -> Dict:
@@ -107,7 +50,7 @@ async def mcp_discovery():
         "version": SERVER_VERSION,
         "protocol_version": MCP_PROTOCOL_VERSION,
         "description": "MCP server for Big Bull club events - fetch upcoming events and event details",
-        "tools": TOOLS_DEFINITION
+        "tools": get_tools_list()
     }
     return JSONResponse(
         content=metadata,
@@ -117,22 +60,17 @@ async def mcp_discovery():
 
 @mcp_router.get("/.well-known/mcp")
 async def mcp_discovery_alt():
-    """Alternative discovery endpoint without .json extension"""
     return await mcp_discovery()
 
 
 @mcp_router.get("/mcp")
 async def mcp_discovery_root():
-    """Discovery endpoint at /mcp root for clients that check here"""
     return await mcp_discovery()
 
 
 @mcp_router.post("/mcp")
 async def mcp_handler(request: Request):
-    """
-    Main MCP protocol handler with SSE (Server-Sent Events) support.
-    Handles JSON-RPC 2.0 requests for MCP operations over SSE.
-    """
+
     try:
         body = await request.json()
     except json.JSONDecodeError:
@@ -247,7 +185,7 @@ async def handle_tools_list_sse(params: Dict, request_id: Optional[str]) -> Stre
     """Handle MCP tools/list request with SSE"""
     async def event_stream():
         result = {
-            "tools": TOOLS_DEFINITION
+            "tools": get_tools_list()
         }
         response = create_mcp_response(result, request_id)
         yield f"data: {json.dumps(response)}\n\n"
@@ -264,6 +202,7 @@ async def handle_tools_list_sse(params: Dict, request_id: Optional[str]) -> Stre
 
 
 async def handle_tools_call_sse(params: Dict, request_id: Optional[str]) -> StreamingResponse:
+    """Handle MCP tools/call request with SSE"""
     async def event_stream():
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
@@ -274,61 +213,8 @@ async def handle_tools_call_sse(params: Dict, request_id: Optional[str]) -> Stre
             return
 
         try:
-            if tool_name == "get_all_events":
-                # Apply defaults for optional parameters
-                processed_args = {
-                    "page": arguments.get("page", 0),
-                    "size": arguments.get("size", 4),
-                    "sortBy": arguments.get("sortBy", "eventDateTime"),
-                    "sortDir": arguments.get("sortDir", "asc"),
-                    "afterDate": arguments.get("afterDate")
-                }
-
-                # Validate required field
-                if not processed_args["afterDate"]:
-                    result = {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps({
-                                    "success": False,
-                                    "error": "afterDate is required. Please provide a date in ISO 8601 format (e.g., 2026-02-04T00:00:00.000Z)"
-                                }, indent=2)
-                            }
-                        ],
-                        "isError": True
-                    }
-                    response = create_mcp_response(result, request_id)
-                    yield f"data: {json.dumps(response)}\n\n"
-                    return
-
-                tool_result = await tool_get_all_events(processed_args)
-
-            elif tool_name == "get_event_by_slug":
-                # Validate required field
-                if not arguments.get("event_slug"):
-                    result = {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps({
-                                    "success": False,
-                                    "error": "event_slug is required"
-                                }, indent=2)
-                            }
-                        ],
-                        "isError": True
-                    }
-                    response = create_mcp_response(result, request_id)
-                    yield f"data: {json.dumps(response)}\n\n"
-                    return
-
-                tool_result = await tool_get_event_by_slug(arguments)
-
-            else:
-                error_response = create_mcp_error(-32602, f"Unknown tool: {tool_name}", request_id)
-                yield f"data: {json.dumps(error_response)}\n\n"
-                return
+            # Call tool using centralized registry
+            tool_result = await registry_call_tool(tool_name, arguments)
 
             # Format response in MCP content block format
             result = {
@@ -337,7 +223,8 @@ async def handle_tools_call_sse(params: Dict, request_id: Optional[str]) -> Stre
                         "type": "text",
                         "text": json.dumps(tool_result, indent=2, default=str)
                     }
-                ]
+                ],
+                "isError": not tool_result.get("success", False)
             }
 
             response = create_mcp_response(result, request_id)
@@ -370,112 +257,6 @@ async def handle_tools_call_sse(params: Dict, request_id: Optional[str]) -> Stre
     )
 
 
-    """Handle MCP tools/call request"""
-    tool_name = params.get("name")
-    arguments = params.get("arguments", {})
-
-    if not tool_name:
-        return JSONResponse(
-            content=create_mcp_error(-32602, "Invalid params: 'name' is required", request_id),
-            status_code=400,
-            media_type="application/json"
-        )
-
-    try:
-        if tool_name == "get_all_events":
-            # Apply defaults for optional parameters
-            processed_args = {
-                "page": arguments.get("page", 0),
-                "size": arguments.get("size", 4),
-                "sortBy": arguments.get("sortBy", "eventDateTime"),
-                "sortDir": arguments.get("sortDir", "asc"),
-                "afterDate": arguments.get("afterDate")
-            }
-
-            # Validate required field
-            if not processed_args["afterDate"]:
-                result = {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps({
-                                "success": False,
-                                "error": "afterDate is required. Please provide a date in ISO 8601 format (e.g., 2026-02-04T00:00:00.000Z)"
-                            }, indent=2)
-                        }
-                    ],
-                    "isError": True
-                }
-                return JSONResponse(
-                    content=create_mcp_response(result, request_id),
-                    media_type="application/json"
-                )
-
-            tool_result = await tool_get_all_events(processed_args)
-
-        elif tool_name == "get_event_by_slug":
-            # Validate required field
-            if not arguments.get("event_slug"):
-                result = {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps({
-                                "success": False,
-                                "error": "event_slug is required"
-                            }, indent=2)
-                        }
-                    ],
-                    "isError": True
-                }
-                return JSONResponse(
-                    content=create_mcp_response(result, request_id),
-                    media_type="application/json"
-                )
-
-            tool_result = await tool_get_event_by_slug(arguments)
-
-        else:
-            return JSONResponse(
-                content=create_mcp_error(-32602, f"Unknown tool: {tool_name}", request_id),
-                status_code=400,
-                media_type="application/json"
-            )
-
-        # Format response in MCP content block format
-        result = {
-            "content": [
-                {
-                    "type": "text",
-                    "text": json.dumps(tool_result, indent=2, default=str)
-                }
-            ]
-        }
-
-        return JSONResponse(
-            content=create_mcp_response(result, request_id),
-            media_type="application/json"
-        )
-
-    except Exception as e:
-        result = {
-            "content": [
-                {
-                    "type": "text",
-                    "text": json.dumps({
-                        "success": False,
-                        "error": str(e)
-                    }, indent=2)
-                }
-            ],
-            "isError": True
-        }
-        return JSONResponse(
-            content=create_mcp_response(result, request_id),
-            media_type="application/json"
-        )
-
-
 @mcp_router.options("/mcp")
 async def mcp_options():
     """Handle CORS preflight requests"""
@@ -487,7 +268,6 @@ async def mcp_options():
             "Access-Control-Allow-Headers": "*",
         }
     )
-
 
 
 @mcp_router.options("/.well-known/mcp")

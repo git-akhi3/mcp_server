@@ -4,9 +4,7 @@ import json
 
 async def tool_get_all_events(input_data):
     try:
-        # Log the input for debugging
         print(f"[DEBUG] get_all_events input: {json.dumps(input_data, indent=2)}")
-        
         data = await EventAPIService.get_all_events(**input_data)
 
         return {

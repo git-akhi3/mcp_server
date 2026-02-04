@@ -6,7 +6,6 @@ class EventAPIService:
 
     @staticmethod
     def _get_headers():
-        """Get the required tenant headers for all API calls"""
         return {
             "Content-Type": "application/json",
             "X-Tenant-Id": settings.TENANT_ID,

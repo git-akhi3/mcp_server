@@ -5,7 +5,7 @@ import json
 import uuid
 import asyncio
 
-from app.mcp.registry import get_tools_list, call_tool as registry_call_tool
+from app.mcp.registry import get_tools_list, call_tool as registry_call_tool, SYSTEM_INSTRUCTIONS
 
 mcp_router = APIRouter()
 
@@ -50,6 +50,7 @@ async def mcp_discovery():
         "version": SERVER_VERSION,
         "protocol_version": MCP_PROTOCOL_VERSION,
         "description": "MCP server for Big Bull club events - fetch upcoming events and event details",
+        "instructions": SYSTEM_INSTRUCTIONS,
         "tools": get_tools_list()
     }
     return JSONResponse(
@@ -147,7 +148,8 @@ async def handle_initialize_sse(params: Dict, request_id: Optional[str]) -> Stre
             },
             "serverInfo": {
                 "name": SERVER_NAME,
-                "version": SERVER_VERSION
+                "version": SERVER_VERSION,
+                "instructions": SYSTEM_INSTRUCTIONS
             }
         }
         response = create_mcp_response(result, request_id)

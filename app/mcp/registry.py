@@ -7,71 +7,73 @@ from typing import Dict, Any
 
 # System Instructions for LLM Optimization
 SYSTEM_INSTRUCTIONS = """
+⚠️ CRITICAL: TOOLS ARE MANDATORY - WEB SEARCH IS FORBIDDEN ⚠️
 
-PRIMARY TOOL-FIRST RULE
-- Big Bull event tools are the authoritative source of truth for all event, party, booking, schedule, and availability information.
-- If a query mentions Big Bull + anything related to events, dates, schedules, parties, tickets, entry, tables, or bookings — ALWAYS call a tool first.
-- Do not answer from memory or web search before attempting a tool call.
-- Tool misuse is safer than missing a required tool call.
+PRIMARY DIRECTIVE - TOOL ENFORCEMENT:
+You DO NOT have information about Big Bull events in your training data.
+The ONLY way to get Big Bull event information is by calling the provided MCP tools.
+Web search is DISABLED and PROHIBITED for all Big Bull queries.
 
-WEB TOOL SUPPRESSION RULE
-If the query mentions:
-- Big Bull
-- events, parties, schedules, bookings, tickets, tables, or dates
+ABSOLUTE RULE:
+If user query contains "Big Bull" AND any of these keywords:
+- events, parties, shows, schedule, calendar
+- what's happening, what's on, upcoming
+- tonight, today, tomorrow, weekend, this week
+- tickets, bookings, tables, reservations, entry
 
-Then:
-- DO NOT use web search tools.
-- Skip web lookup completely.
-- Go directly to Big Bull MCP tools.
+Then you MUST:
+1. IMMEDIATELY call get_all_events tool (with afterDate parameter)
+2. Wait for tool response
+3. ONLY THEN provide answer based on tool data
 
-Web tools are only allowed when:
-- The query is unrelated to Big Bull events
-- Or MCP tools return no results
+You CANNOT:
+- Answer without calling the tool first
+- Use web search as an alternative
+- Use your training data or general knowledge
+- Say "let me search" and then use web instead of tools
 
+EXAMPLE - CORRECT BEHAVIOR:
+User: "what events at big bull"
+Action: Call get_all_events(afterDate="2026-02-04T00:00:00.000Z")
+Wait for response, then answer.
 
-MANDATORY TOOL TRIGGERS
-Always call a tool when the query includes:
-- events, parties, shows, schedules
-- what’s happening / what’s on / what can I attend
-- today, tonight, tomorrow, Friday, weekend, this week, after <date>, from <date>
-- tickets, cover charge, entry, guestlist
-- tables, reservations, bookings
-- price, availability
-- event recommendations
+EXAMPLE - WRONG BEHAVIOR (FORBIDDEN):
+User: "what events at big bull"
+Action: Search web → WRONG! Use tool instead!
+Action: Answer from memory → WRONG! You have no memory of this!
 
-DATE INTENT OVERRIDE
-- If the user mentions any time reference (today, tonight, this Friday, weekend, after a date), you MUST call get_all_events with an afterDate ISO 8601 timestamp.
-- Never answer date-based event questions without a tool call.
+MANDATORY TOOL TRIGGERS:
+These phrases REQUIRE immediate tool call:
+- "events at big bull"
+- "what's happening at big bull"
+- "big bull parties"
+- "big bull tonight"
+- "big bull this weekend"
+- "upcoming events"
+- "what's on at big bull"
 
-VENUE BINDING RULE
-- If the message contains “Big Bull” (or clear reference to the club), tool routing takes priority over web search and model knowledge.
-- Do not attempt entity disambiguation via web before tool call.
+DATE HANDLING:
+- ALWAYS include afterDate in ISO 8601 format: YYYY-MM-DDTHH:MM:SS.000Z
+- Current date: 2026-02-04
+- "tonight" → "2026-02-04T00:00:00.000Z"
+- "this weekend" → "2026-02-04T00:00:00.000Z"
+- No afterDate → Use current date
 
-TOOL-FIRST EXECUTION RULE
-- Do not produce event answers until at least one relevant tool call has been attempted.
-- If uncertain whether a tool applies — call it.
+TOOL SELECTION:
+- Use get_all_events for: browsing, discovery, schedules, date-filtered queries
+- Use get_event_by_slug for: specific event details when slug is known
 
-TOOL SELECTION
-- Use get_all_events for browsing, discovery, schedules, and date-filtered queries.
-- Use get_event_by_slug when a specific event is named or previously identified.
+RESPONSE STYLE (after tool call):
+- Sound like club staff: friendly and professional
+- Keep replies under 5 sentences unless asked for more
+- No emojis, no hype language, no long explanations
+- Summarize key info only
+- Ask ONE follow-up question if helpful:
+  * "Want ticket info?"
+  * "Should I check table availability?"
+  * "Planning for this weekend?"
 
-RESPONSE STYLE AFTER TOOL CALL
-- Sound like real club staff: friendly and professional.
-- Keep replies under 5 sentences unless user asks for more detail.
-- No emojis.
-- No marketing tone or hype language.
-- No long explanations unless requested.
-- No bullet lists unless they clearly improve readability.
-- Summarize — do not dump raw fields.
-
-FOLLOW-UP QUESTION RULES
-- Ask at most one follow-up question.
-- Only ask questions that help booking or event discovery move forward.
-- Good examples:
-  - “Do you want ticket info too?”
-  - “Should I check table availability?”
-  - “Are you planning for this weekend?”
-
+REMEMBER: Tool call is NOT optional. It is REQUIRED for all Big Bull event queries.
 """
 
 
@@ -124,62 +126,64 @@ GET_EVENT_BY_SLUG_SCHEMA = {
 # Tools Registry
 TOOLS = {
     "get_all_events": {
-    "description": """
-                Use this tool when the user asks about upcoming events, parties, shows, schedules, or what is happening at Big Bull club.
+        "description": """
+Use this tool when the user asks about upcoming events, parties, shows, schedules, or what is happening at Big Bull club.
 
-                Trigger this tool for questions like:
-                - what events are coming up
-                - what’s happening this weekend
-                - upcoming parties
-                - show me the event list
-                - what’s on after a certain date
-                - events after <date>
+This tool MUST be called for ANY query about Big Bull events. Do NOT use web search instead.
 
-                Returns a paginated list of upcoming events.
+Trigger this tool for questions like:
+- what events are coming up
+- what's happening this weekend
+- upcoming parties
+- show me the event list
+- what's on after a certain date
+- events after <date>
+- events at big bull
 
-                If the user mentions a time filter (after a date, from a date, this week, this weekend), convert it to afterDate in ISO 8601 format with timezone (example: 2026-02-04T00:00:00.000Z).
+Returns a paginated list of upcoming events.
 
-                If the user intent is about browsing or discovering events, use this tool.
+If the user mentions a time filter (after a date, from a date, this week, this weekend), convert it to afterDate in ISO 8601 format with timezone (example: 2026-02-04T00:00:00.000Z).
 
-                Response style after tool call:
-                - Keep the reply short and conversational
-                - Summarize key events only
-                - Do not produce long lists unless asked
-                - Ask one natural follow-up question.
-                """,
-                    "inputSchema": GET_ALL_EVENTS_SCHEMA,
-                    "handler": tool_get_all_events,
-},
+If the user intent is about browsing or discovering events, use this tool.
+
+Response style after tool call:
+- Keep the reply short and conversational
+- Summarize key events only
+- Do not produce long lists unless asked
+- Ask one natural follow-up question.
+""",
+        "inputSchema": GET_ALL_EVENTS_SCHEMA,
+        "handler": tool_get_all_events,
+    },
 
     "get_event_by_slug": {
-    "description": """
-            Use this tool when the user asks about a specific event by name or refers to one event already mentioned.
+        "description": """
+Use this tool when the user asks about a specific event by name or refers to one event already mentioned.
 
-            Trigger this tool for questions like:
-            - tell me more about this event
-            - event details
-            - ticket info
-            - table availability
-            - booking options
-            - price or entry info for an event
+Trigger this tool for questions like:
+- tell me more about this event
+- event details
+- ticket info
+- table availability
+- booking options
+- price or entry info for an event
 
-            Requires the event slug.
+Requires the event slug.
 
-            Returns full event details including booking types and table availability.
+Returns full event details including booking types and table availability.
 
-            Use this tool after an event has been identified from a previous event list or when the slug is known.
+Use this tool after an event has been identified from a previous event list or when the slug is known.
 
-            Response style after tool call:
-            - Answer like a human staff member
-            - Keep it concise
-            - Do not repeat raw data fields
-            - Summarize only what matters to the user
-            - Ask one realistic follow-up question if helpful.
-            """,
-                "inputSchema": GET_EVENT_BY_SLUG_SCHEMA,
-                "handler": tool_get_event_by_slug,
-},
-
+Response style after tool call:
+- Answer like a human staff member
+- Keep it concise
+- Do not repeat raw data fields
+- Summarize only what matters to the user
+- Ask one realistic follow-up question if helpful.
+""",
+        "inputSchema": GET_EVENT_BY_SLUG_SCHEMA,
+        "handler": tool_get_event_by_slug,
+    },
 }
 
 

@@ -1,29 +1,54 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import Literal
-import re
+from typing import Dict, Any
+
+# Schema Definitions
+GET_ALL_EVENTS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "page": {
+            "type": "integer",
+            "description": "Page number for pagination (0-indexed). Default is 0.",
+            "default": 0
+        },
+        "size": {
+            "type": "integer",
+            "description": "Number of events per page. Default is 4.",
+            "default": 4
+        },
+        "sortBy": {
+            "type": "string",
+            "description": "Field to sort by. Default is 'eventDateTime'.",
+            "default": "eventDateTime"
+        },
+        "sortDir": {
+            "type": "string",
+            "description": "Sort direction: 'asc' for ascending, 'desc' for descending. Default is 'asc'.",
+            "enum": ["asc", "desc"],
+            "default": "asc"
+        },
+        "afterDate": {
+            "type": "string",
+            "description": "ISO 8601 datetime string with timezone. MUST be in format: YYYY-MM-DDTHH:MM:SS.000Z (e.g., 2026-02-04T00:00:00.000Z). This filters events occurring after this date."
+        }
+    },
+    "required": ["afterDate"],
+    "additionalProperties": False
+}
+
+GET_EVENT_BY_SLUG_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "event_slug": {
+            "type": "string",
+            "description": "The unique slug identifier for the event (e.g., 'new-year-party-2026')"
+        }
+    },
+    "required": ["event_slug"],
+    "additionalProperties": False
+}
 
 
-class GetAllEventsInput(BaseModel):
-    page: int = Field(default=0, ge=0, description="Page number for pagination (0-indexed)")
-    size: int = Field(default=4, ge=1, le=50, description="Number of events per page")
-    sortBy: str = Field(default="eventDateTime", description="Field to sort by")
-    sortDir: Literal["asc", "desc"] = Field(default="asc", description="Sort direction")
-    afterDate: str = Field(..., description="ISO 8601 datetime with timezone (e.g., 2026-02-04T00:00:00.000Z)")
-
-    @field_validator('afterDate')
-    @classmethod
-    def validate_after_date(cls, v: str) -> str:
-        pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$'
-        if not re.match(pattern, v):
-            raise ValueError('afterDate must be in ISO 8601 format with timezone (e.g., 2026-02-04T00:00:00.000Z)')
-        return v
-
-    class Config:
-        extra = "forbid"
-
-
-class GetEventBySlugInput(BaseModel):
-    event_slug: str = Field(..., min_length=1, description="Unique slug identifier for the event")
-
-    class Config:
-        extra = "forbid"
+def get_all_schemas() -> Dict[str, Dict[str, Any]]:
+    return {
+        "get_all_events": GET_ALL_EVENTS_SCHEMA,
+        "get_event_by_slug": GET_EVENT_BY_SLUG_SCHEMA,
+    }

@@ -2,10 +2,14 @@ from typing import Dict, Any, List
 from app.tools.event_tools import (
     tool_get_all_events,
     tool_get_event_by_slug,
+    tool_book_event,
+    tool_get_booking_details,
 )
 from app.mcp.schemas import (
     GET_ALL_EVENTS_SCHEMA,
     GET_EVENT_BY_SLUG_SCHEMA,
+    BOOK_EVENT_SCHEMA,
+    GET_BOOKING_DETAILS_SCHEMA,
 )
 from constants import ToolName, TOOL_DESCRIPTIONS
 
@@ -21,6 +25,16 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "description": TOOL_DESCRIPTIONS[ToolName.GET_EVENT_BY_SLUG],
         "inputSchema": GET_EVENT_BY_SLUG_SCHEMA,
         "handler": tool_get_event_by_slug,
+    },
+    ToolName.BOOK_EVENT: {
+        "description": TOOL_DESCRIPTIONS[ToolName.BOOK_EVENT],
+        "inputSchema": BOOK_EVENT_SCHEMA,
+        "handler": tool_book_event,
+    },
+    ToolName.GET_BOOKING_DETAILS: {
+        "description": TOOL_DESCRIPTIONS[ToolName.GET_BOOKING_DETAILS],
+        "inputSchema": GET_BOOKING_DETAILS_SCHEMA,
+        "handler": tool_get_booking_details,
     },
 }
 
@@ -71,6 +85,68 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
                 }
             
             return await tool["handler"](arguments)
+        
+        elif name == ToolName.BOOK_EVENT:
+            # Validate all required fields for booking
+            required_fields = [
+                "event_id", "booking_entity_type", "booking_entity_id",
+                "quantity", "customer_name", "customer_email", "customer_whatsapp"
+            ]
+            
+            missing_fields = [field for field in required_fields if not arguments.get(field)]
+            
+            if missing_fields:
+                return {
+                    "success": False,
+                    "error": f"Missing required fields: {', '.join(missing_fields)}. Please collect all customer details (name, email, WhatsApp number) before booking."
+                }
+            
+            # Validate booking_entity_type
+            if arguments.get("booking_entity_type") not in ["TICKET_TYPE", "TABLE"]:
+                return {
+                    "success": False,
+                    "error": "booking_entity_type must be either 'TICKET_TYPE' or 'TABLE'"
+                }
+            
+            # Validate quantity
+            quantity = arguments.get("quantity", 1)
+            if not isinstance(quantity, int) or quantity < 1:
+                return {
+                    "success": False,
+                    "error": "quantity must be a positive integer (minimum 1)"
+                }
+            
+            processed_args = {
+                "event_id": arguments["event_id"],
+                "booking_entity_type": arguments["booking_entity_type"],
+                "booking_entity_id": arguments["booking_entity_id"],
+                "quantity": quantity,
+                "customer_name": arguments["customer_name"],
+                "customer_email": arguments["customer_email"],
+                "customer_whatsapp": arguments["customer_whatsapp"],
+            }
+            
+            return await tool["handler"](processed_args)
+        
+        elif name == ToolName.GET_BOOKING_DETAILS:
+            if not arguments.get("booking_id"):
+                return {
+                    "success": False,
+                    "error": "booking_id is required. This should be the UUID returned from a successful book_event call."
+                }
+            
+            if not arguments.get("customer_id"):
+                return {
+                    "success": False,
+                    "error": "customer_id is required. This should be the numeric ID returned from a successful book_event call."
+                }
+            
+            processed_args = {
+                "booking_id": arguments["booking_id"],
+                "customer_id": arguments["customer_id"],
+            }
+            
+            return await tool["handler"](processed_args)
         
         return await tool["handler"](arguments)
         

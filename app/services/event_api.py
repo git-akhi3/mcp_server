@@ -1,4 +1,4 @@
-from app.utils.http import get_json
+from app.utils.http import get_json, post_json
 from app.config import settings
 
 
@@ -45,5 +45,52 @@ class EventAPIService:
 
         if not data.get("success"):
             raise ValueError("Event not found")
+
+        return data["data"]
+
+    @staticmethod
+    async def book_event(
+        event_id: int,
+        booking_entity_type: str,
+        booking_entity_id: int,
+        quantity: int,
+        customer_name: str,
+        customer_email: str,
+        customer_whatsapp: str,
+    ):
+        url = f"{settings.TICKET_WEB_BASE_URL}/book"
+
+        payload = {
+            "eventId": event_id,
+            "bookingEntityType": booking_entity_type,
+            "bookingEntityId": booking_entity_id,
+            "quantity": quantity,
+            "customerDetails": {
+                "name": customer_name,
+                "email": customer_email,
+                "whatsappNo": customer_whatsapp,
+            }
+        }
+
+        data = await post_json(url, json_data=payload, headers=EventAPIService._get_headers())
+
+        if not data.get("success"):
+            raise ValueError(data.get("message", "Booking failed"))
+
+        return data["data"]
+
+    @staticmethod
+    async def get_booking_details(booking_id: str, customer_id: int):
+        url = f"{settings.TICKET_BASE_URL}/booking-details"
+
+        params = {
+            "bookingId": booking_id,
+            "customerId": customer_id,
+        }
+
+        data = await get_json(url, params=params, headers=EventAPIService._get_headers())
+
+        if not data.get("success"):
+            raise ValueError(data.get("message", "Failed to fetch booking details"))
 
         return data["data"]

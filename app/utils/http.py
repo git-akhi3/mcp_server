@@ -26,8 +26,11 @@ async def post_json(url: str, json_data: Optional[dict] = None, headers: Optiona
         resp = await client.post(url, json=json_data, headers=headers)
 
         if resp.status_code >= 400:
+            print(f"[ERROR] POST {url} failed with {resp.status_code}")
+            print(f"[ERROR] Request body: {json_data}")
+            print(f"[ERROR] Response body: {resp.text}")
             raise httpx.HTTPStatusError(
-                f"HTTP {resp.status_code}",
+                f"HTTP {resp.status_code}: {resp.text}",
                 request=resp.request,
                 response=resp,
             )

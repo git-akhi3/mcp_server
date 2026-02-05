@@ -43,6 +43,8 @@ async def tool_get_event_by_slug(input_data):
 
 async def tool_book_event(input_data):
     try:
+        print(f"[INFO] Booking request received: event_id={input_data.get('event_id')}, booking_entity_id={input_data.get('booking_entity_id')}")
+        
         data = await EventAPIService.book_event(
             event_id=input_data["event_id"],
             booking_entity_type=input_data["booking_entity_type"],
@@ -62,10 +64,19 @@ async def tool_book_event(input_data):
         }
 
     except Exception as e:
-        print(f"[ERROR] book_event failed: {str(e)}")
+        error_msg = str(e)
+        print(f"[ERROR] book_event failed: {error_msg}")
+        
+        # Check if it's an invalid ID error
+        if "not for booking" in error_msg.lower() or "not found" in error_msg.lower():
+            return {
+                "success": False,
+                "error": f"Invalid booking IDs. The event_id or booking_entity_id you provided don't exist or aren't available for booking. You MUST call get_event_by_slug FIRST to get the correct IDs. Error: {error_msg}",
+            }
+        
         return {
             "success": False,
-            "error": str(e),
+            "error": error_msg,
         }
 
 

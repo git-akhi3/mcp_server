@@ -72,7 +72,13 @@ class EventAPIService:
             }
         }
 
+        print(f"[DEBUG] book_event URL: {url}")
+        print(f"[DEBUG] book_event payload: {payload}")
+        print(f"[DEBUG] book_event headers: {EventAPIService._get_headers()}")
+
         data = await post_json(url, json_data=payload, headers=EventAPIService._get_headers())
+
+        print(f"[DEBUG] book_event response: {data}")
 
         if not data.get("success"):
             raise ValueError(data.get("message", "Booking failed"))
